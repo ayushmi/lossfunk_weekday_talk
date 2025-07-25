@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>From Full-Text Search to LLM Reranking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            overflow: hidden;
+            padding: 40px;
+        }
+        
+        .slide {
+            height: calc(100vh - 80px);
+            padding: 40px;
+            display: none;
+            overflow-y: auto;
+            overflow-x: hidden;
+            animation: slideIn 0.5s ease-out;
+            margin: 0 auto;
+            max-width: 1400px;
+        }
+        
+        .slide.active {
+            display: block;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        h2 {
+            font-size: 2.2em;
+            margin-bottom: 15px;
+            color: #fbbf24;
+        }
+        
+        h3 {
+            font-size: 1.8em;
+            margin-bottom: 10px;
+            color: #60a5fa;
+        }
+        
+        .code-block {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            font-family: 'Fira Code', monospace;
+            position: relative;
+        }
+        
+        .code-block::before {
+            content: attr(data-lang);
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            font-size: 0.8em;
+            color: #666;
+        }
+        
+        .highlight {
+            background: #fbbf2420;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 10px;
+            display: inline-block;
+            min-width: 200px;
+            transition: transform 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+            border-color: #fbbf24;
+        }
+        
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #fbbf24;
+        }
+        
+        .pipeline-viz {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        .nav {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        .nav button {
+            background: #333;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        .nav button:hover {
+            background: #555;
+        }
+        
+        .slide-number {
+            position: fixed;
+            top: 40px;
+            right: 40px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .comparison-table th,
+        .comparison-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        
+        .comparison-table th {
+            background: #1a1a1a;
+            color: #fbbf24;
+        }
+        
+        .comparison-table tr:hover {
+            background: #1a1a1a;
+        }
+        
+        .warning-box {
+            background: #7c2d1220;
+            border-left: 4px solid #dc2626;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .success-box {
+            background: #16a34a20;
+            border-left: 4px solid #16a34a;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .meme-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .meme-container img {
+            max-width: 600px;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .joke-box {
+            background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+            border: 1px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-style: italic;
+            text-align: center;
+        }
+        
+        .diagram-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        .insight-pill {
+            display: inline-block;
+            background: #60a5fa20;
+            border: 1px solid #60a5fa;
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin: 5px;
+            font-size: 0.9em;
+        }
+        
+        .demo-box {
+            background: #1a1a1a;
+            border: 2px dashed #666;
+            border-radius: 8px;
+            padding: 30px;
+            margin: 20px 0;
+            text-align: center;
+            color: #999;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+        
+        ul li::before {
+            content: "▸ ";
+            color: #fbbf24;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        /* Custom scrollbar for better visibility */
+        .slide::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        .slide::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 5px;
+        }
+        
+        .slide::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 5px;
+        }
+        
+        .slide::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-number" id="slideNumber">1 / 15</div>
+    
+    <!-- Slide 1: Title -->
+    <div class="slide active" id="slide1">
+        <h1>From Full-Text Search to LLM Reranking</h1>
+        <h2 style="color: #60a5fa;">A Technical Journey Through Real-World Retrieval</h2>
+        
+        <div class="meme-container">
+            <svg width="600" height="400" viewBox="0 0 600 400">
+                <!-- Beach background -->
+                <rect width="600" height="200" fill="#87CEEB"/>
+                <rect y="200" width="600" height="200" fill="#F4E4C1"/>
+                
+                <!-- Elephant -->
+                <ellipse cx="300" cy="150" rx="120" ry="80" fill="#808080"/>
+                <rect x="280" y="150" width="40" height="80" fill="#808080"/>
+                <rect x="240" y="150" width="30" height="70" fill="#808080"/>
+                <rect x="330" y="150" width="30" height="70" fill="#808080"/>
+                <path d="M 180 150 Q 160 180 170 200" stroke="#808080" stroke-width="15" fill="none"/>
+                
+                <!-- Ball -->
+                <circle cx="300" cy="250" r="30" fill="#FFA500"/>
+                
+                <!-- Text on elephant -->
+                <text x="300" y="140" text-anchor="middle" font-size="24" font-weight="bold" fill="white">AGENTIC AI ECONOMY</text>
+                
+                <!-- Text on ball -->
+                <text x="300" y="255" text-anchor="middle" font-size="12" fill="black">Reasoning LLMs</text>
+                
+                <!-- Ants -->
+                <circle cx="250" cy="300" r="5" fill="black"/>
+                <circle cx="255" cy="305" r="3" fill="black"/>
+                <circle cx="350" cy="300" r="5" fill="black"/>
+                <circle cx="345" cy="305" r="3" fill="black"/>
+                
+                <!-- Prompt text -->
+                <text x="300" y="340" text-anchor="middle" font-size="14" fill="black">PROMPT: "Please Bro, response in valid JSON</text>
+                <text x="300" y="360" text-anchor="middle" font-size="14" fill="black">format without errors and make sure</text>
+                <text x="300" y="380" text-anchor="middle" font-size="14" fill="black">the syntax is super correct. I'm begging you man..."</text>
+            </svg>
+        </div>
+        
+        <div class="grid">
+            <div class="metric-card">
+                <div>Candidates Searched</div>
+                <div class="metric-value">300M+</div>
+            </div>
+            <div class="metric-card">
+                <div>Response Time</div>
+                <div class="metric-value">&lt;2s</div>
+            </div>
+            <div class="metric-card">
+                <div>Evolution Stages</div>
+                <div class="metric-value">4</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Slide 2: The Evolution Question -->
+    <div class="slide" id="slide2">
+        <h1>The Evolution Question</h1>
+        
+        <h3>Why did search systems evolve from simple keyword matching to complex ML pipelines?</h3>
+        
+        <div class="joke-box">
+            "Because grep said 'I've found 10,000 matches!' and the user said 'But which one do I actually want?'"
+        </div>
+        
+        <div class="grid">
+            <div class="warning-box">
+                <h3>Not Because:</h3>
+                <ul>
+                    <li>We could</li>
+                    <li>LLMs are cool</li>
+                    <li>Everyone else is doing it</li>
+                </ul>
+            </div>
+            <div class="success-box">
+                <h3>But Because:</h3>
+                <ul>
+                    <li>Each evolution solved a specific failure mode</li>
+                    <li>Users demanded better relevance</li>
+                    <li>Scale broke simple solutions</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>Our Domain Challenges:</h3>
+        <ul>
+            <li>Ambiguous natural language queries</li>
+            <li>Semi-structured, noisy documents</li>
+            <li>Domain-specific vocabulary</li>
+            <li>Latency constraints (&lt;2 seconds!)</li>
+        </ul>
+    </div>
+    
+    <!-- Slide 3: Setting Context -->
+    <div class="slide" id="slide3">
+        <h1>The Search Spectrum: A Decision Framework</h1>
+        
+        <table class="comparison-table" style="font-size: 0.9em;">
+            <thead>
+                <tr>
+                    <th>System</th>
+                    <th>Query Info</th>
+                    <th>Doc Structure</th>
+                    <th>Match Type</th>
+                    <th>Feedback</th>
+                    <th>ML Insight</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Flight Search</strong></td>
+                    <td>Complete<br/><span style="color: #16a34a;">✓ All fields</span></td>
+                    <td>Structured<br/><span style="color: #16a34a;">✓ Schema</span></td>
+                    <td>Exact</td>
+                    <td>Binary<br/>(booked/not)</td>
+                    <td><span style="color: #60a5fa;">→ Simple filters work<br/>→ No ML needed</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Amazon Products</strong></td>
+                    <td>Partial<br/><span style="color: #fbbf24;">~ Intent hidden</span></td>
+                    <td>Semi-structured<br/><span style="color: #fbbf24;">~ Noisy desc</span></td>
+                    <td>Fuzzy</td>
+                    <td>Rich<br/>(views, cart, buy)</td>
+                    <td><span style="color: #60a5fa;">→ LTR shines<br/>→ Behavioral signals > text</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Google Search</strong></td>
+                    <td>Minimal<br/><span style="color: #dc2626;">✗ Ambiguous</span></td>
+                    <td>Unstructured<br/><span style="color: #dc2626;">✗ Anything</span></td>
+                    <td>Semantic</td>
+                    <td>Sparse<br/>(clicks only)</td>
+                    <td><span style="color: #60a5fa;">→ Need query understanding<br/>→ Embeddings help</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Netflix Search</strong></td>
+                    <td>Explicit<br/><span style="color: #16a34a;">✓ Clear intent</span></td>
+                    <td>Rich metadata<br/><span style="color: #16a34a;">✓ Tagged</span></td>
+                    <td>Categorical</td>
+                    <td>Implicit<br/>(watch time)</td>
+                    <td><span style="color: #60a5fa;">→ Metadata > content<br/>→ Personalization layer</span></td>
+                </tr>
+                <tr style="background: #60a5fa10;">
+                    <td><strong>ShareChat Rec</strong></td>
+                    <td>None<br/><span style="color: #dc2626;">✗ No query</span></td>
+                    <td>User-generated<br/><span style="color: #dc2626;">✗ Chaotic</span></td>
+                    <td>Behavioral</td>
+                    <td>Ultra-sparse<br/>(&lt;0.01% dense)</td>
+                    <td><span style="color: #60a5fa;">→ Cold start kills<br/>→ Need content fallback</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Candidate Search</strong></td>
+                    <td>Vague NL<br/><span style="color: #fbbf24;">~ "PM who coded"</span></td>
+                    <td>Semi-structured<br/><span style="color: #fbbf24;">~ LinkedIn</span></td>
+                    <td>Multi-aspect</td>
+                    <td>Very sparse<br/>(only hires)</td>
+                    <td><span style="color: #60a5fa;">→ Query → Structure<br/>→ Hybrid necessary</span></td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="grid" style="margin-top: 30px;">
+            <div class="warning-box">
+                <h3>The Information Theory of Search</h3>
+                <p><strong>Query Completeness:</strong> Do you have all the info you need?</p>
+                <p><strong>Document Structure:</strong> Can you extract what you need?</p>
+                <p><strong>Feedback Density:</strong> Do you have signals to learn from?</p>
+            </div>
+            
+            <div class="success-box">
+                <h3>The Fundamental Trade-offs</h3>
+                <p><strong>Structured → Simple:</strong> Use filters & rules</p>
+                <p><strong>Rich Feedback → ML:</strong> Learn from behavior</p>
+                <p><strong>Sparse Everything → Hybrid:</strong> Combine approaches</p>
+            </div>
+        </div>
+        
+        <div class="joke-box">
+            "GIGO (Garbage In, Garbage Out) in search: If users search for 'that thing from yesterday', 
+            even GPT-5 won't help you. Unless you know what they did yesterday... which is creepy."
+        </div>
+    </div>
+    
+    <!-- Slide 4: The 7 Questions Framework -->
+    <div class="slide" id="slide4">
+        <h1>The 7 Questions You Must Answer Before Building Search</h1>
+        
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">1. What's in your query?</h3>
+                <p style="color: #ccc; margin: 10px 0;">Complete fields? Natural language? Nothing?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>Flight: origin, dest, date ✓<br/>
+                    Recruiting: "senior engineer who..." 🤔</small>
+                </div>
+            </div>
+            
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">2. What's in your documents?</h3>
+                <p style="color: #ccc; margin: 10px 0;">Structured data? Free text? User-generated chaos?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>Products: SKU, price, description<br/>
+                    Resumes: Anything goes...</small>
+                </div>
+            </div>
+            
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">3. What's your feedback density?</h3>
+                <p style="color: #ccc; margin: 10px 0;">Clicks per query? Conversion rate? Implicit signals?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>&lt;1%: Can't learn much<br/>
+                    &gt;5%: LTR becomes viable</small>
+                </div>
+            </div>
+            
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">4. What's your latency budget?</h3>
+                <p style="color: #ccc; margin: 10px 0;">100ms? 1s? 10s? Real-time or batch?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>&lt;100ms: No LLMs<br/>
+                    &lt;1s: Limited reranking<br/>
+                    &gt;1s: Full pipeline possible</small>
+                </div>
+            </div>
+            
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">5. What's your scale?</h3>
+                <p style="color: #ccc; margin: 10px 0;">1K docs? 1M? 1B? QPS expectations?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>&lt;100K: Brute force works<br/>
+                    &gt;10M: Need proper indexing<br/>
+                    &gt;1B: Distributed systems</small>
+                </div>
+            </div>
+            
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">6. How fresh is fresh?</h3>
+                <p style="color: #ccc; margin: 10px 0;">Static catalog? Daily updates? Real-time?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>News: Minutes matter<br/>
+                    Products: Daily is fine<br/>
+                    Research papers: Monthly</small>
+                </div>
+            </div>
+            
+            <div class="metric-card" style="min-width: 400px; padding: 30px;">
+                <h3 style="color: #fbbf24;">7. What does success mean?</h3>
+                <p style="color: #ccc; margin: 10px 0;">Precision? Recall? Diversity? Business metric?</p>
+                <div style="background: #2a2a2a; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    <small>Legal: 100% recall required<br/>
+                    E-commerce: Conversion rate<br/>
+                    Social: Engagement time</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="warning-box" style="margin-top: 30px;">
+            <h3>The Universal Truth</h3>
+            <p>Your answers to these 7 questions determine your entire architecture.</p>
+            <p>Get these wrong, and no amount of ML magic will save you.</p>
+        </div>
+    </div>
+    
+    <!-- Slide 5: Our Answers -->
+    <div class="slide" id="slide5">
+        <h1>Case Study: How We Answered The 7 Questions</h1>
+        
+        <div class="grid" style="margin-bottom: 30px;">
+            <div class="demo-box" style="text-align: left; background: #1a1a1a;">
+                <h3 style="color: #fbbf24;">Our Answers:</h3>
+                <p><strong>1. Query:</strong> Vague NL → Need LLM translation</p>
+                <p><strong>2. Docs:</strong> Semi-structured → ES + preprocessing</p>
+                <p><strong>3. Feedback:</strong> &lt;0.1% sparse → Can't rely on ML alone</p>
+                <p><strong>4. Latency:</strong> 2s budget → Pipeline possible</p>
+                <p><strong>5. Scale:</strong> 300M docs → Distributed ES</p>
+                <p><strong>6. Freshness:</strong> Daily updates → Batch processing OK</p>
+                <p><strong>7. Success:</strong> Hire rate + diversity → Multi-objective</p>
+            </div>
+        </div>
+        
+        <div class="pipeline-viz">
+            <svg width="800" height="500" viewBox="0 0 800 500">
+                <!-- Pipeline boxes with annotations -->
+                <rect x="250" y="20" width="300" height="60" rx="10" fill="#1a1a1a" stroke="#fbbf24" stroke-width="2"/>
+                <text x="400" y="55" text-anchor="middle" fill="white" font-size="18">Natural Language Query</text>
+                <text x="400" y="10" text-anchor="middle" fill="#60a5fa" font-size="12">Q1: Vague NL input</text>
+                
+                <!-- Arrow -->
+                <path d="M 400 80 L 400 120" stroke="#60a5fa" stroke-width="3" marker-end="url(#arrowhead)"/>
+                
+                <rect x="200" y="120" width="400" height="60" rx="10" fill="#1a1a1a" stroke="#fbbf24" stroke-width="2"/>
+                <text x="400" y="155" text-anchor="middle" fill="white" font-size="18">Query Understanding (LLM)</text>
+                <text x="400" y="195" text-anchor="middle" fill="#16a34a" font-size="12">Solution: LLM translates to structure</text>
+                
+                <!-- Continue pipeline -->
+                <path d="M 400 180 L 400 280" stroke="#60a5fa" stroke-width="3" marker-end="url(#arrowhead)"/>
+                
+                <rect x="200" y="280" width="400" height="60" rx="10" fill="#1a1a1a" stroke="#fbbf24" stroke-width="2"/>
+                <text x="400" y="315" text-anchor="middle" fill="white" font-size="18">ES Retrieval (Top 2K)</text>
+                <text x="400" y="355" text-anchor="middle" fill="#16a34a" font-size="12">Q2,5: Semi-structured at scale</text>
+                
+                <path d="M 400 340 L 400 380" stroke="#60a5fa" stroke-width="3" marker-end="url(#arrowhead)"/>
+                
+                <rect x="200" y="380" width="400" height="60" rx="10" fill="#1a1a1a" stroke="#fbbf24" stroke-width="2"/>
+                <text x="400" y="415" text-anchor="middle" fill="white" font-size="18">Rule + LLM Reranking</text>
+                <text x="400" y="455" text-anchor="middle" fill="#16a34a" font-size="12">Q3,4: Sparse feedback + 2s budget</text>
+                
+                <!-- Arrow marker -->
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+                        <polygon points="0 0, 10 5, 0 10" fill="#60a5fa"/>
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+        
+        <div class="success-box">
+            <h3>Key Insight: Our Architecture Follows Our Constraints</h3>
+            <p>Vague queries + Semi-structured docs + Sparse feedback = Hybrid pipeline</p>
+            <p>Each component addresses specific limitations identified in the 7 questions</p>
+        </div>
+    </div>
+    
+    <!-- Slide 6: Full-Text Search -->
+    <div class="slide" id="slide6">
+        <h1>Full-Text Search: When Structure Matches Intent</h1>
+        
+        <div class="grid" style="margin-bottom: 20px;">
+            <div class="success-box">
+                <h3>✅ Use FTS When:</h3>
+                <ul>
+                    <li>Query terms ≈ Document terms</li>
+                    <li>Users know exact terminology</li>
+                    <li>You need explainable results</li>
+                    <li>Latency is critical (&lt;50ms)</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>❌ FTS Fails When:</h3>
+                <ul>
+                    <li>Vocabulary mismatch exists</li>
+                    <li>Context determines meaning</li>
+                    <li>Relationships matter</li>
+                    <li>Intent ≠ Keywords</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>The Pre-computed Importance Pattern</h3>
+        
+        <div class="code-block" data-lang="python">
+<br>def compute_term_importance(profile):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    importance_scores = {}
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    # Position-based weighting
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    for term in profile.headline:
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        importance_scores[term] = <span class="highlight">0.9</span>  # Headline = strong signal
+<br>    
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    for term in profile.current_title:
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        importance_scores[term] = <span class="highlight">0.8</span>
+<br>        
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    for term in profile.skills:
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        importance_scores[term] = <span class="highlight">0.6</span>
+<br>        
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    # TF-IDF adjustment
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    for term, score in importance_scores.items():
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        tf = term_frequency(term, profile)
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        idf = inverse_doc_frequency(term, all_profiles)
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        importance_scores[term] *= tf * idf
+<br>        
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    return importance_scores
+<br>        </div>
+        
+        <div class="demo-box" style="background: #dc262610; border-color: #dc2626;">
+            <h3>Classic FTS Failure Mode:</h3>
+            <p>Query: "Senior engineer who's built distributed systems"</p>
+            <p>Returns:</p>
+            <ul style="text-align: left;">
+                <li>"HR Manager - hiring distributed systems engineers" ❌</li>
+                <li>"QA Engineer - tested distributed systems" ❌</li>
+                <li>"Junior Developer - interested in distributed systems" ❌</li>
+            </ul>
+            <p style="color: #dc2626;">Problem: Token presence ≠ Semantic role</p>
+        </div>
+        
+        <h3>The Critical Lesson: Retrieval Depth > Ranking Quality</h3>
+        
+        <div class="warning-box">
+            <h3>🎯 Fundamental Truth</h3>
+            <p><strong>If your top-2000 from FTS doesn't contain good candidates, no amount of ML/LLM reranking helps.</strong></p>
+            <p>You can't rank what you didn't retrieve!</p>
+        </div>
+        
+        <div class="insight-pill">Invest in query expansion first</div>
+        <div class="insight-pill">Synonym handling beats fancy ML</div>
+        <div class="insight-pill">Recall optimization before reranking</div>
+        
+        <div class="success-box">
+            <h3>💡 Design Decision:</h3>
+            <p>If your answers to Q1 (query) and Q2 (docs) are both "structured", stop here!</p>
+            <p>Example: Flight search, inventory systems, structured databases</p>
+        </div>
+    </div>
+    
+    <!-- Slide 7: Vector Search -->
+    <div class="slide" id="slide7">
+        <h1>Vector Search: The Semantic Promise & Perils</h1>
+        
+        <div class="grid" style="margin-bottom: 20px;">
+            <div class="success-box">
+                <h3>✅ Use Embeddings When:</h3>
+                <ul>
+                    <li>Query ≠ Document vocabulary</li>
+                    <li>Semantic similarity matters</li>
+                    <li>You have dense supervision</li>
+                    <li>Cross-lingual search needed</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>❌ Embeddings Fail When:</h3>
+                <ul>
+                    <li>Precision > Recall required</li>
+                    <li>Domain has specific jargon</li>
+                    <li>Negation matters ("NOT Java")</li>
+                    <li>Exact matches needed</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>The Fundamental Problem: Information Loss</h3>
+        
+        <div class="code-block" data-lang="python">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# The Promise
+<br>&nbsp;&nbsp;&nbsp;&nbsp;query_embedding = encode("Need ML engineer with distributed systems experience")
+<br>&nbsp;&nbsp;&nbsp;&nbsp;candidate_embeddings = encode_all_profiles()
+<br>&nbsp;&nbsp;&nbsp;&nbsp;results = find_nearest(query_embedding, candidate_embeddings, k=1000)
+<br>&nbsp;&nbsp;&nbsp;&nbsp;
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# The Reality - Actual similarities we observed:
+<br>&nbsp;&nbsp;&nbsp;&nbsp;similarity("HR Manager hiring Python developers", "Python Developer") = <span class="highlight">0.82</span>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;similarity("Tested distributed systems", "Built distributed systems") = <span class="highlight">0.91</span>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;similarity("Interested in ML", "ML Engineer 5 years") = <span class="highlight">0.79</span>
+        </div>
+        
+        <div class="demo-box" style="background: #60a5fa10;">
+            <h3>LLM vs LLM: When Acronyms Attack</h3>
+            <p><strong>Large Language Model</strong> vs <strong>Master of Laws</strong></p>
+            <p>Generic embedding: similarity("LLM Engineer", "LLM Graduate") = <span class="highlight">0.87</span> 🤦</p>
+            <p>Domain matters! Law firms searching for LLMs get ML engineers.</p>
+        </div>
+        
+        <div class="diagram-container">
+            <svg width="600" height="350" viewBox="0 0 600 350">
+                <text x="300" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">The Representation Collapse</text>
+                
+                <!-- High dimensional space -->
+                <rect x="50" y="60" width="200" height="150" rx="10" fill="#1a1a1a" stroke="#666"/>
+                <text x="150" y="90" text-anchor="middle" fill="white" font-size="14">Original Space</text>
+                <text x="150" y="110" text-anchor="middle" fill="#999" font-size="12">- Built systems</text>
+                <text x="150" y="130" text-anchor="middle" fill="#999" font-size="12">- Tested systems</text>
+                <text x="150" y="150" text-anchor="middle" fill="#999" font-size="12">- Managed systems</text>
+                <text x="150" y="170" text-anchor="middle" fill="#999" font-size="12">- Hiring for systems</text>
+                
+                <!-- Arrow -->
+                <path d="M 250 135 L 350 135" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrowhead)"/>
+                <text x="300" y="125" text-anchor="middle" fill="#60a5fa" font-size="12">embed()</text>
+                
+                <!-- Embedding space -->
+                <circle cx="450" cy="135" r="60" fill="#60a5fa20" stroke="#60a5fa" stroke-width="2"/>
+                <text x="450" y="140" text-anchor="middle" fill="white" font-size="14">All become</text>
+                <text x="450" y="160" text-anchor="middle" fill="white" font-size="14">"systems"</text>
+                
+                <!-- Math -->
+                <text x="300" y="250" text-anchor="middle" fill="#fbbf24" font-size="16">Information Theory:</text>
+                <text x="300" y="280" text-anchor="middle" fill="white" font-size="14">ℝⁿ → ℝᵈ where d ≪ n</text>
+                <text x="300" y="300" text-anchor="middle" fill="#999" font-size="12">Compression → Information loss</text>
+                <text x="300" y="320" text-anchor="middle" fill="#999" font-size="12">Context destroyed</text>
+            </svg>
+        </div>
+        
+        <h3>The Critical Lesson: Retrieval Depth Still Matters</h3>
+        
+        <div class="warning-box">
+            <p><strong>Even with perfect embeddings, if your retrieval@2000 misses candidates, reranking can't help.</strong></p>
+            <p>Embedding search isn't magic - it's still bound by k!</p>
+        </div>
+        
+        <div class="success-box">
+            <h3>💡 Design Decision:</h3>
+            <p>If Q1 = "natural language" AND Q3 = "rich feedback" → Train custom embeddings</p>
+            <p>If Q3 = "sparse feedback" → Generic embeddings will disappoint</p>
+            <p>If domain-specific precision needed → Hybrid with exact match</p>
+        </div>
+    </div>
+    
+    <!-- Slide 8: Rule-Based Reranking -->
+    <div class="slide" id="slide8">
+        <h1>Rule-Based Systems: When Domain Knowledge is King</h1>
+        
+        <div class="grid" style="margin-bottom: 20px;">
+            <div class="success-box">
+                <h3>✅ Use Rules When:</h3>
+                <ul>
+                    <li>Domain has clear heuristics</li>
+                    <li>Interpretability required</li>
+                    <li>Sparse feedback (Q3 &lt; 1%)</li>
+                    <li>Business logic is complex</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>❌ Rules Fail When:</h3>
+                <ul>
+                    <li>Patterns change frequently</li>
+                    <li>Too many edge cases</li>
+                    <li>Rich feedback available</li>
+                    <li>Scale exceeds maintenance</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>The Feature Space Partitioning</h3>
+        
+        <div class="code-block" data-lang="python">
+total_score = (
+    <span class="highlight">0.4</span> * title_score +      # Role match <br>
+    <span class="highlight">0.3</span> * skills_score +     # Technical fit <br>
+    <span class="highlight">0.15</span> * experience_score + # Seniority alignment <br>
+    <span class="highlight">0.15</span> * education_score   # Background fit <br>
+)
+        </div>
+        
+        <h3>The Critical Lesson: Domain Knowledge Is Your Moat</h3>
+        
+        <div class="demo-box" style="background: #fbbf2420; border-color: #fbbf24;">
+            <h3>💎 Your Competitive Advantage</h3>
+            <p>Generic models (embeddings, LLMs) fail on domain-specific nuances:</p>
+            <ul style="text-align: left;">
+                <li>"Consultant" at Infosys ≈ "SDE" elsewhere</li>
+                <li>"Member of Technical Staff" ≈ "Senior Engineer"</li>
+                <li>"Lead" at startup ≠ "Lead" at BigCo ≠ "Lead" in India</li>
+                <li>"Stanford" matters more for US roles than Indian</li>
+            </ul>
+            <p style="color: #fbbf24;"><strong>This knowledge must be explicitly encoded somewhere!</strong></p>
+        </div>
+        
+        <div class="diagram-container">
+            <svg width="700" height="350" viewBox="0 0 700 350">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">Decision Boundaries in Feature Space</text>
+                
+                <!-- 2D feature space -->
+                <rect x="50" y="60" width="250" height="250" fill="#1a1a1a" stroke="#666"/>
+                <text x="175" y="330" text-anchor="middle" fill="white" font-size="14">Skills Match →</text>
+                <text x="30" y="185" text-anchor="middle" fill="white" font-size="14" transform="rotate(-90 30 185)">Title Match →</text>
+                
+                <!-- Decision regions -->
+                <rect x="150" y="60" width="150" height="150" fill="#16a34a20"/>
+                <text x="225" y="135" text-anchor="middle" fill="#16a34a" font-size="12">Accept</text>
+                
+                <rect x="50" y="210" width="100" height="100" fill="#dc262620"/>
+                <text x="100" y="260" text-anchor="middle" fill="#dc2626" font-size="12">Reject</text>
+                
+                <!-- Decision boundary -->
+                <line x1="50" y1="210" x2="300" y2="60" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,5"/>
+                
+                <!-- Domain knowledge examples -->
+                <text x="500" y="100" text-anchor="middle" fill="#fbbf24" font-size="16">Domain Knowledge:</text>
+                <text x="500" y="130" text-anchor="middle" fill="white" font-size="12">"SDE III at Amazon"</text>
+                <text x="500" y="150" text-anchor="middle" fill="#999" font-size="12">↓</text>
+                <text x="500" y="170" text-anchor="middle" fill="white" font-size="12">"Staff at startup"</text>
+                
+                <text x="500" y="210" text-anchor="middle" fill="white" font-size="12">"WITCH company"</text>
+                <text x="500" y="230" text-anchor="middle" fill="#999" font-size="12">↓</text>
+                <text x="500" y="250" text-anchor="middle" fill="white" font-size="12">Different eng bar</text>
+                
+                <text x="500" y="290" text-anchor="middle" fill="#60a5fa" font-size="14">Can't learn this from data!</text>
+            </svg>
+        </div>
+        
+        <div class="warning-box">
+            <h3>The Maintenance Explosion - Real Example:</h3>
+            <div class="code-block" data-lang="python">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Started simple
+<br>&nbsp;&nbsp;&nbsp;&nbsp;if "Senior" in title and experience >= 5:
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    return True
+
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Became...
+<br>&nbsp;&nbsp;&nbsp;&nbsp;seniority_map = {
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    "US": {"Senior": 5, "Staff": 8, "Principal": 10},
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    "India": {"Senior": 3, "Lead": 5, "Architect": 8},
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    "Startup": {"Senior": 3, "Lead": 4, "Founding": 2},
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    # ... 47 more regional/company variations
+<br>&nbsp;&nbsp;&nbsp;&nbsp;}
+            </div>
+        </div>
+        
+        <div class="success-box">
+            <h3>💡 Design Decision:</h3>
+            <p>If Q3 (feedback) &lt; 1% AND you have domain expertise → Rules work well</p>
+            <p>If Q7 (success) requires interpretability → Rules are necessary</p>
+            <p>But plan for maintenance cost: O(edge cases) = O(n²) over time</p>
+        </div>
+    </div>
+    
+    <!-- Slide 9: Learning to Rank -->
+    <div class="slide" id="slide9">
+        <h1>Learning to Rank: When You Have Labels</h1>
+        
+        <div class="grid" style="margin-bottom: 20px;">
+            <div class="success-box">
+                <h3>✅ Use LTR When:</h3>
+                <ul>
+                    <li>Feedback density &gt; 5%</li>
+                    <li>Clear success metrics</li>
+                    <li>Features are extractable</li>
+                    <li>Patterns are stable</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>❌ LTR Fails When:</h3>
+                <ul>
+                    <li>Cold start (new domains)</li>
+                    <li>Sparse feedback &lt; 1%</li>
+                    <li>Distribution shifts often</li>
+                    <li>Features poorly represent intent</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>The Supervised Learning Framework</h3>
+        
+        <div class="diagram-container">
+            <svg width="700" height="400" viewBox="0 0 700 400">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">From Rules to Learning</text>
+                
+                <!-- Rules side -->
+                <rect x="50" y="60" width="250" height="300" rx="10" fill="#1a1a1a" stroke="#666"/>
+                <text x="175" y="90" text-anchor="middle" fill="#dc2626" font-size="16">Rules (Before)</text>
+                <text x="175" y="120" text-anchor="middle" fill="white" font-size="12">w₁ = 0.4 (guessed)</text>
+                <text x="175" y="140" text-anchor="middle" fill="white" font-size="12">w₂ = 0.3 (guessed)</text>
+                <text x="175" y="160" text-anchor="middle" fill="white" font-size="12">w₃ = 0.15 (guessed)</text>
+                <text x="175" y="190" text-anchor="middle" fill="#999" font-size="12">Fixed boundaries</text>
+                <text x="175" y="210" text-anchor="middle" fill="#999" font-size="12">No adaptation</text>
+                
+                <!-- Arrow -->
+                <path d="M 300 210 L 400 210" stroke="#60a5fa" stroke-width="3" marker-end="url(#arrowhead)"/>
+                <text x="350" y="200" text-anchor="middle" fill="#60a5fa" font-size="12">Learn from data</text>
+                
+                <!-- LTR side -->
+                <rect x="400" y="60" width="250" height="300" rx="10" fill="#1a1a1a" stroke="#16a34a"/>
+                <text x="525" y="90" text-anchor="middle" fill="#16a34a" font-size="16">LTR (After)</text>
+                <text x="525" y="120" text-anchor="middle" fill="white" font-size="12">w₁ = 0.523 (learned)</text>
+                <text x="525" y="140" text-anchor="middle" fill="white" font-size="12">w₂ = 0.189 (learned)</text>
+                <text x="525" y="160" text-anchor="middle" fill="white" font-size="12">w₃ = 0.091 (learned)</text>
+                <text x="525" y="190" text-anchor="middle" fill="#16a34a" font-size="12">Non-linear boundaries</text>
+                <text x="525" y="210" text-anchor="middle" fill="#16a34a" font-size="12">Adapts to feedback</text>
+                
+                <!-- Data requirement -->
+                <rect x="200" y="280" width="300" height="60" rx="10" fill="#60a5fa20" stroke="#60a5fa"/>
+                <text x="350" y="310" text-anchor="middle" fill="white" font-size="14">Required: Labels (y)</text>
+                <text x="350" y="330" text-anchor="middle" fill="#60a5fa" font-size="12">Click = 0, Apply = 0.5, Hire = 1.0</text>
+            </svg>
+        </div>
+        
+        <h3>The Feature Engineering Challenge</h3>
+        
+        <div class="code-block" data-lang="python">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Simple feature: "5 years Python experience"
+<br>&nbsp;&nbsp;&nbsp;&nbsp;def extract_skill_years(profile, skill):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    return profile.get_experience(skill, 0)
+
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Reality: "5 years Python" means what?
+<br>&nbsp;&nbsp;&nbsp;&nbsp;def extract_skill_features(profile, skill):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    return {
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        'exact_years': exact_match_years(profile, skill),
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        'related_years': related_skill_years(profile, skill),
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        'recency': last_used_date(profile, skill),
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        'depth': skill_depth_score(profile, skill),  # Scripts vs Systems?
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        'context': skill_context_vector(profile, skill)  # 100+ dims
+<br>&nbsp;&nbsp;&nbsp;&nbsp;}
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Feature explosion: 1 requirement → 100+ features
+        </div>
+        
+        <div class="warning-box">
+            <h3>The ML Fundamental: Representation vs Labels Trade-off</h3>
+            <p><strong>Rich features + Few labels = Overfitting</strong></p>
+            <p><strong>Simple features + Many labels = Underfitting</strong></p>
+            <p>Your Q3 answer (feedback density) determines feature complexity!</p>
+        </div>
+        
+        <div class="success-box">
+            <h3>💡 Design Decision Tree:</h3>
+            <p>Q3 &gt; 5% dense + Q7 is quantifiable → LTR is viable</p>
+            <p>Q3 &lt; 1% sparse → Stay with rules or use transfer learning</p>
+            <p>Q6 changes frequently → Online learning required</p>
+            <p>Remember: <strong>You need 10x more labels than features!</strong></p>
+        </div>
+    </div>
+    
+    <!-- Slide 10: LLM Reranking -->
+    <div class="slide" id="slide10">
+        <h1>LLM Reranking: The Expensive Oracle</h1>
+        
+        <div class="grid" style="margin-bottom: 20px;">
+            <div class="success-box">
+                <h3>✅ Use LLMs When:</h3>
+                <ul>
+                    <li>Nuanced judgment needed</li>
+                    <li>Context varies per query</li>
+                    <li>Small candidate sets (&lt;1000)</li>
+                    <li>Latency budget &gt; 1s</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>❌ LLMs Fail When:</h3>
+                <ul>
+                    <li>Scale requirements (millions)</li>
+                    <li>Latency &lt; 100ms</li>
+                    <li>Domain knowledge missing</li>
+                    <li>Consistency critical</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>The Critical Lesson: LLMs Don't Eliminate Feature Engineering - They Move It</h3>
+        
+        <div class="grid">
+            <div class="code-block" data-lang="Before: Numerical Features">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;features = [
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    title_similarity_score,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    years_experience,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    skill_overlap_percentage
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+]
+            </div>
+            
+            <div class="code-block" data-lang="After: Textual Representation">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;candidate_text = f"""
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Current Role: {title} at {company} ({duration})
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Core Expertise: {top_5_skills}
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Career Trajectory: {role_progression}
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Domain: {industry_experience}
+"""
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Bad representation loses signal!
+            </div>
+        </div>
+        
+        <div class="warning-box">
+            <h3>⚠️ The Literal Interpretation Problem</h3>
+            <p>Real failures we encountered with rule-like prompts:</p>
+            <div class="code-block" data-lang="Prompt">
+"If candidate has 5+ years Python experience, score high"
+
+LLM: "Candidate has 4.5 years Python + 2 years Django"
+Score: <span class="highlight">Low ❌</span> (Because 4.5 < 5, ignored Django!)
+            </div>
+            <p><strong>LLMs follow rules too literally, missing context!</strong></p>
+        </div>
+        
+        <div class="diagram-container">
+            <svg width="700" height="400" viewBox="0 0 700 400">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">Information Flow in LLM Ranking</text>
+                
+                <!-- Bad prompt -->
+                <rect x="50" y="60" width="250" height="100" rx="10" fill="#dc262620" stroke="#dc2626"/>
+                <text x="175" y="90" text-anchor="middle" fill="white" font-size="14">Rule-Heavy Prompt</text>
+                <text x="175" y="110" text-anchor="middle" fill="#999" font-size="11">"If X then Y"</text>
+                <text x="175" y="130" text-anchor="middle" fill="#999" font-size="11">"Must have Z"</text>
+                <text x="175" y="150" text-anchor="middle" fill="#999" font-size="11">"Prioritize A over B"</text>
+                
+                <!-- Arrow -->
+                <path d="M 300 110 L 400 110" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowhead)"/>
+                <text x="350" y="100" text-anchor="middle" fill="#dc2626" font-size="12">Literal</text>
+                
+                <!-- Result -->
+                <rect x="400" y="60" width="250" height="100" rx="10" fill="#dc262620" stroke="#dc2626"/>
+                <text x="525" y="90" text-anchor="middle" fill="white" font-size="14">Brittle Evaluation</text>
+                <text x="525" y="110" text-anchor="middle" fill="#dc2626" font-size="11">✗ Edge cases fail</text>
+                <text x="525" y="130" text-anchor="middle" fill="#dc2626" font-size="11">✗ No nuance</text>
+                <text x="525" y="150" text-anchor="middle" fill="#dc2626" font-size="11">✗ Context ignored</text>
+                
+                <!-- Good prompt -->
+                <rect x="50" y="200" width="250" height="100" rx="10" fill="#16a34a20" stroke="#16a34a"/>
+                <text x="175" y="230" text-anchor="middle" fill="white" font-size="14">Context-Rich Prompt</text>
+                <text x="175" y="250" text-anchor="middle" fill="#999" font-size="11">"Evaluate holistically"</text>
+                <text x="175" y="270" text-anchor="middle" fill="#999" font-size="11">"Consider trade-offs"</text>
+                <text x="175" y="290" text-anchor="middle" fill="#999" font-size="11">"Domain: {context}"</text>
+                
+                <!-- Arrow -->
+                <path d="M 300 250 L 400 250" stroke="#16a34a" stroke-width="2" marker-end="url(#arrowhead)"/>
+                <text x="350" y="240" text-anchor="middle" fill="#16a34a" font-size="12">Pattern</text>
+                
+                <!-- Result -->
+                <rect x="400" y="200" width="250" height="100" rx="10" fill="#16a34a20" stroke="#16a34a"/>
+                <text x="525" y="230" text-anchor="middle" fill="white" font-size="14">Flexible Evaluation</text>
+                <text x="525" y="250" text-anchor="middle" fill="#16a34a" font-size="11">✓ Handles nuance</text>
+                <text x="525" y="270" text-anchor="middle" fill="#16a34a" font-size="11">✓ Context aware</text>
+                <text x="525" y="290" text-anchor="middle" fill="#16a34a" font-size="11">✓ Reasonable</text>
+            </svg>
+        </div>
+        
+        <h3>The Cost Reality</h3>
+        
+        <div class="code-block" data-lang="python">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Latency math for different scales:
+<br>&nbsp;&nbsp;&nbsp;&nbsp;def calculate_llm_cost(candidates, tokens_per_eval=100, seconds_per_call=0.5):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    total_seconds = candidates * seconds_per_call
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    return {
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        '10_candidates': '5 seconds',
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        '100_candidates': '50 seconds',
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        '1000_candidates': '8.3 minutes',
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        '1M_candidates': '5.8 days',
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;        '300M_candidates': '<span class="highlight">4.7 years</span>'
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    }
+
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Cost at scale (GPT-4 pricing):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# 1M tokens ≈ $10
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# 1M candidates ≈ 100M tokens ≈ <span class="highlight">$1,000 per query</span>
+        </div>
+        
+        <div class="warning-box">
+            <h3>The Evolution to Rule Engines</h3>
+            <p>Simple prompt → Structured prompt → Domain rules → Complex conditions</p>
+            <p>Eventually: <strong>if-else with extra steps and 1000x cost!</strong></p>
+        </div>
+        
+        <div class="success-box">
+            <h3>💡 Design Decision:</h3>
+            <p>Q4 (latency) &gt; 1s AND Q5 (scale) &lt; 1000 → LLMs viable</p>
+            <p>Q1 (query) is very nuanced → LLMs help with edge cases</p>
+            <p>Q3 (feedback) too sparse for ML → LLMs provide pseudo-labels</p>
+            <p><strong>Remember: LLMs are rerankers, not retrievers!</strong></p>
+        </div>
+    </div>
+    
+    <!-- Slide 11: Hybrid Architectures -->
+    <div class="slide" id="slide11">
+        <h1>Hybrid Architectures: Composing Solutions</h1>
+        
+        <h3>The Fundamental Principle: Each Tool Has Limits</h3>
+        
+        <div class="diagram-container">
+            <svg width="700" height="450" viewBox="0 0 700 450">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">The Search Stack</text>
+                
+                <!-- FTS -->
+                <rect x="50" y="60" width="600" height="60" rx="10" fill="#dc262620" stroke="#dc2626"/>
+                <text x="100" y="95" text-anchor="start" fill="white" font-size="16">FTS</text>
+                <text x="200" y="85" text-anchor="start" fill="#999" font-size="12">Strength: High recall, fast</text>
+                <text x="200" y="105" text-anchor="start" fill="#999" font-size="12">Weakness: No semantics</text>
+                <text x="500" y="95" text-anchor="end" fill="#dc2626" font-size="14">300M → 10K</text>
+                
+                <!-- Rules -->
+                <rect x="100" y="140" width="550" height="60" rx="10" fill="#16a34a20" stroke="#16a34a"/>
+                <text x="150" y="175" text-anchor="start" fill="white" font-size="16">Rules</text>
+                <text x="250" y="165" text-anchor="start" fill="#999" font-size="12">Strength: Domain knowledge</text>
+                <text x="250" y="185" text-anchor="start" fill="#999" font-size="12">Weakness: Maintenance</text>
+                <text x="550" y="175" text-anchor="end" fill="#16a34a" font-size="14">10K → 2K</text>
+                
+                <!-- ML/LTR -->
+                <rect x="150" y="220" width="500" height="60" rx="10" fill="#60a5fa20" stroke="#60a5fa"/>
+                <text x="200" y="255" text-anchor="start" fill="white" font-size="16">ML/LTR</text>
+                <text x="300" y="245" text-anchor="start" fill="#999" font-size="12">Strength: Learns patterns</text>
+                <text x="300" y="265" text-anchor="start" fill="#999" font-size="12">Weakness: Needs labels</text>
+                <text x="550" y="255" text-anchor="end" fill="#60a5fa" font-size="14">2K → 500</text>
+                
+                <!-- LLMs -->
+                <rect x="200" y="300" width="450" height="60" rx="10" fill="#fbbf2420" stroke="#fbbf24"/>
+                <text x="250" y="335" text-anchor="start" fill="white" font-size="16">LLMs</text>
+                <text x="350" y="325" text-anchor="start" fill="#999" font-size="12">Strength: Nuanced judgment</text>
+                <text x="350" y="345" text-anchor="start" fill="#999" font-size="12">Weakness: Cost & latency</text>
+                <text x="550" y="335" text-anchor="end" fill="#fbbf24" font-size="14">500 → 50</text>
+                
+                <!-- Final -->
+                <rect x="250" y="380" width="200" height="40" rx="10" fill="#fff" stroke="#333"/>
+                <text x="350" y="405" text-anchor="middle" fill="#000" font-size="16">Final Results: 50</text>
+            </svg>
+        </div>
+        
+        <h3>The Information Funnel</h3>
+        
+        <div class="grid">
+            <div class="metric-card" style="background: #dc262620;">
+                <h3>Stage 1: Recall</h3>
+                <p>FTS casts wide net</p>
+                <p>Information preserved: Keywords</p>
+                <p>Information lost: Context</p>
+            </div>
+            
+            <div class="metric-card" style="background: #16a34a20;">
+                <h3>Stage 2: Filter</h3>
+                <p>Rules apply constraints</p>
+                <p>Information added: Domain logic</p>
+                <p>Information lost: Flexibility</p>
+            </div>
+            
+            <div class="metric-card" style="background: #60a5fa20;">
+                <h3>Stage 3: Rank</h3>
+                <p>ML optimizes order</p>
+                <p>Information added: Patterns</p>
+                <p>Information lost: Interpretability</p>
+            </div>
+            
+            <div class="metric-card" style="background: #fbbf2420;">
+                <h3>Stage 4: Refine</h3>
+                <p>LLMs handle nuance</p>
+                <p>Information added: Context</p>
+                <p>Information lost: Consistency</p>
+            </div>
+        </div>
+        
+        <div class="warning-box">
+            <h3>The ML Fundamental: No Free Lunch Theorem</h3>
+            <p>No single algorithm excels at all tasks. Hybrid architectures aren't compromises - they're optimal!</p>
+            <p>Each stage compensates for the previous stage's weaknesses.</p>
+        </div>
+        
+        <div class="success-box">
+            <h3>💡 Design Your Stack:</h3>
+            <p><strong>Start with your constraints (7 Questions)</strong></p>
+            <p>Q5 (scale) → Determines first stage (FTS/Vector)</p>
+            <p>Q3 (feedback) → Determines middle stages (Rules/ML)</p>
+            <p>Q4 (latency) → Determines final stage depth</p>
+            <p>Q7 (success) → Determines evaluation approach</p>
+        </div>
+    </div>
+    
+    <!-- Slide 12: Measurement -->
+    <div class="slide" id="slide12">
+        <h1>Measurement: Diagnosing Your System</h1>
+        
+        <h3>The Fundamental Question: What Does Success Mean?</h3>
+        
+        <div class="diagram-container">
+            <svg width="700" height="400" viewBox="0 0 700 400">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">Metrics as Diagnostic Tools</text>
+                
+                <!-- System -->
+                <rect x="50" y="60" width="150" height="280" rx="10" fill="#1a1a1a" stroke="#666"/>
+                <text x="125" y="90" text-anchor="middle" fill="white" font-size="16">System</text>
+                <text x="125" y="120" text-anchor="middle" fill="#999" font-size="12">FTS</text>
+                <text x="125" y="150" text-anchor="middle" fill="#999" font-size="12">↓</text>
+                <text x="125" y="180" text-anchor="middle" fill="#999" font-size="12">Rules</text>
+                <text x="125" y="210" text-anchor="middle" fill="#999" font-size="12">↓</text>
+                <text x="125" y="240" text-anchor="middle" fill="#999" font-size="12">ML</text>
+                <text x="125" y="270" text-anchor="middle" fill="#999" font-size="12">↓</text>
+                <text x="125" y="300" text-anchor="middle" fill="#999" font-size="12">LLM</text>
+                
+                <!-- Metrics -->
+                <path d="M 200 100 L 250 100" stroke="#dc2626" stroke-width="2"/>
+                <rect x="250" y="80" width="180" height="40" rx="5" fill="#dc262620" stroke="#dc2626"/>
+                <text x="340" y="105" text-anchor="middle" fill="white" font-size="12">Recall: 45%</text>
+                <text x="450" y="105" fill="#dc2626" font-size="12">← FTS broken!</text>
+                
+                <path d="M 200 170 L 250 170" stroke="#16a34a" stroke-width="2"/>
+                <rect x="250" y="150" width="180" height="40" rx="5" fill="#16a34a20" stroke="#16a34a"/>
+                <text x="340" y="175" text-anchor="middle" fill="white" font-size="12">Precision: 89%</text>
+                <text x="450" y="175" fill="#16a34a" font-size="12">← Rules work!</text>
+                
+                <path d="M 200 240 L 250 240" stroke="#60a5fa" stroke-width="2"/>
+                <rect x="250" y="220" width="180" height="40" rx="5" fill="#60a5fa20" stroke="#60a5fa"/>
+                <text x="340" y="245" text-anchor="middle" fill="white" font-size="12">NDCG: 0.72</text>
+                <text x="450" y="245" fill="#60a5fa" font-size="12">← ML helps</text>
+                
+                <path d="M 200 310 L 250 310" stroke="#fbbf24" stroke-width="2"/>
+                <rect x="250" y="290" width="180" height="40" rx="5" fill="#fbbf2420" stroke="#fbbf24"/>
+                <text x="340" y="315" text-anchor="middle" fill="white" font-size="12">User Sat: 4.2/5</text>
+                <text x="450" y="315" fill="#fbbf24" font-size="12">← LLM adds value</text>
+            </svg>
+        </div>
+        
+        <h3>Beyond Single Metrics: Multi-Objective Reality</h3>
+        
+        <div class="code-block" data-lang="python">
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Naive approach
+<br>&nbsp;&nbsp;&nbsp;&nbsp;def evaluate_system(results):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    return precision_at_k(results, k=10)  # 0.8
+
+<br>&nbsp;&nbsp;&nbsp;&nbsp;# Reality: Multiple competing objectives
+<br>&nbsp;&nbsp;&nbsp;&nbsp;def evaluate_system_properly(results):
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    return {
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        # Relevance
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'precision@10': 0.8,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'recall@100': 0.45,  # <span class="highlight">← Problem here!</span>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        # Quality Distribution  
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'top_1_perfect': 0.6,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'top_5_good': 0.7,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'top_10_acceptable': 0.8,
+        
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        # Diversity (avoid filter bubbles)
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'company_diversity': 0.3,  # <span class="highlight">← Another problem!</span>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'skill_coverage': 0.65,
+        
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        # Business Impact
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'click_through_rate': 0.12,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'application_rate': 0.08,
+<br>&nbsp;&nbsp;&nbsp;&nbsp;        'hire_rate': 0.002  # <span class="highlight">← Ultimate truth</span>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;    }
+        </div>
+        
+        <h3>Coverage Analysis: Where Is The System Failing?</h3>
+        
+        <div class="grid">
+            <div class="demo-box" style="background: #16a34a10; border-color: #16a34a;">
+                <h3>✅ Working Well</h3>
+                <p>Title match: 89%</p>
+                <p>Location match: 92%</p>
+                <p>Seniority match: 87%</p>
+            </div>
+            
+            <div class="demo-box" style="background: #dc262610; border-color: #dc2626;">
+                <h3>❌ Failing</h3>
+                <p>Skill match: 45%</p>
+                <p>Experience match: 52%</p>
+                <p>Culture fit: ???</p>
+            </div>
+        </div>
+        
+        <div class="warning-box">
+            <h3>The ML Fundamental: Goodhart's Law</h3>
+            <p>"When a measure becomes a target, it ceases to be a good measure."</p>
+            <p>Optimize for clicks → Clickbait results</p>
+            <p>Optimize for precision → Too conservative</p>
+            <p>Optimize for diversity → Relevance drops</p>
+        </div>
+        
+        <div class="success-box">
+            <h3>💡 Design Your Metrics:</h3>
+            <p>Based on Q7 (success definition):</p>
+            <p>• Legal/Medical: Recall is critical (find ALL relevant)</p>
+            <p>• E-commerce: Conversion rate matters most</p>
+            <p>• Social: Engagement + diversity balance</p>
+            <p>• B2B/Recruiting: Quality of top 10 + long-term success</p>
+            <p><strong>Key: Use metrics to diagnose, not just evaluate!</strong></p>
+        </div>
+    </div>
+    
+    <!-- Slide 13: Common Pitfalls -->
+    <div class="slide" id="slide13">
+        <h1>Common Pitfalls & How to Avoid Them</h1>
+        
+        <div class="grid">
+            <div class="warning-box">
+                <h3>🚫 Pitfall 1: Starting with the Fanciest Tech</h3>
+                <p><strong>Symptom:</strong> "Let's use LLMs for everything!"</p>
+                <p><strong>Reality:</strong> 47 years to search 300M docs</p>
+                <p><strong>Solution:</strong> Answer the 7 questions first</p>
+            </div>
+            
+            <div class="warning-box">
+                <h3>🚫 Pitfall 2: Ignoring Information Theory</h3>
+                <p><strong>Symptom:</strong> "Embeddings will understand context"</p>
+                <p><strong>Reality:</strong> ℝⁿ → ℝᵈ loses information</p>
+                <p><strong>Solution:</strong> Know what each encoding preserves</p>
+            </div>
+            
+            <div class="warning-box">
+                <h3>🚫 Pitfall 3: Single Metric Optimization</h3>
+                <p><strong>Symptom:</strong> "We optimized for precision!"</p>
+                <p><strong>Reality:</strong> Recall dropped to 10%</p>
+                <p><strong>Solution:</strong> Multi-objective metrics</p>
+            </div>
+            
+            <div class="warning-box">
+                <h3>🚫 Pitfall 4: Assuming Rich Feedback</h3>
+                <p><strong>Symptom:</strong> "ML will learn from users"</p>
+                <p><strong>Reality:</strong> 0.1% click rate = no signal</p>
+                <p><strong>Solution:</strong> Design for sparse feedback</p>
+            </div>
+        </div>
+        
+        <h3>The Decision Tree for Search Systems</h3>
+        
+        <div class="diagram-container">
+            <svg width="700" height="450" viewBox="0 0 700 450">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">Your Search Architecture Decision Tree</text>
+                
+                <!-- Start -->
+                <rect x="300" y="60" width="100" height="40" rx="20" fill="#60a5fa" stroke="#fff"/>
+                <text x="350" y="85" text-anchor="middle" fill="white" font-size="14">Start</text>
+                
+                <!-- First decision -->
+                <line x1="350" y1="100" x2="350" y2="130" stroke="#666" stroke-width="2"/>
+                <rect x="250" y="130" width="200" height="40" rx="5" fill="#1a1a1a" stroke="#666"/>
+                <text x="350" y="155" text-anchor="middle" fill="white" font-size="12">Q1: Query structured?</text>
+                
+                <!-- Yes branch -->
+                <line x1="250" y1="170" x2="200" y2="200" stroke="#16a34a" stroke-width="2"/>
+                <text x="220" y="190" fill="#16a34a" font-size="12">Yes</text>
+                <rect x="100" y="200" width="150" height="40" rx="5" fill="#16a34a20" stroke="#16a34a"/>
+                <text x="175" y="225" text-anchor="middle" fill="white" font-size="12">Use SQL/Filters</text>
+                
+                <!-- No branch -->
+                <line x1="450" y1="170" x2="500" y2="200" stroke="#dc2626" stroke-width="2"/>
+                <text x="480" y="190" fill="#dc2626" font-size="12">No</text>
+                
+                <!-- Second decision -->
+                <rect x="450" y="200" width="200" height="40" rx="5" fill="#1a1a1a" stroke="#666"/>
+                <text x="550" y="225" text-anchor="middle" fill="white" font-size="12">Q3: Feedback &gt;5%?</text>
+                
+                <!-- Feedback yes -->
+                <line x1="450" y1="240" x2="400" y2="270" stroke="#16a34a" stroke-width="2"/>
+                <text x="420" y="260" fill="#16a34a" font-size="12">Yes</text>
+                <rect x="300" y="270" width="150" height="40" rx="5" fill="#60a5fa20" stroke="#60a5fa"/>
+                <text x="375" y="295" text-anchor="middle" fill="white" font-size="12">Use ML/LTR</text>
+                
+                <!-- Feedback no -->
+                <line x1="650" y1="240" x2="650" y2="270" stroke="#dc2626" stroke-width="2"/>
+                <text x="670" y="260" fill="#dc2626" font-size="12">No</text>
+                
+                <!-- Third decision -->
+                <rect x="550" y="270" width="140" height="40" rx="5" fill="#1a1a1a" stroke="#666"/>
+                <text x="620" y="295" text-anchor="middle" fill="white" font-size="12">Q4: Latency &gt;1s?</text>
+                
+                <!-- Latency branches -->
+                <line x1="550" y1="310" x2="500" y2="340" stroke="#16a34a" stroke-width="2"/>
+                <rect x="400" y="340" width="150" height="40" rx="5" fill="#fbbf2420" stroke="#fbbf24"/>
+                <text x="475" y="365" text-anchor="middle" fill="white" font-size="12">Add LLM layer</text>
+                
+                <line x1="690" y1="310" x2="690" y2="340" stroke="#dc2626" stroke-width="2"/>
+                <rect x="615" y="340" width="150" height="40" rx="5" fill="#dc262620" stroke="#dc2626"/>
+                <text x="690" y="365" text-anchor="middle" fill="white" font-size="12">Rules + Heuristics</text>
+                
+                <!-- Note -->
+                <text x="350" y="420" text-anchor="middle" fill="#999" font-size="12">This is simplified - real decisions involve all 7 questions!</text>
+            </svg>
+        </div>
+        
+        <div class="joke-box">
+            "The best search architecture is like a good joke - if you have to explain why it works, it probably doesn't."
+        </div>
+    </div>
+    
+    <!-- Slide 14: The Future of Search -->
+    <div class="slide" id="slide14">
+        <h1>The Future of Search: It's All Just Prediction</h1>
+        
+        <h3>The Unified View: Everything is Information Compression</h3>
+        
+        <div class="diagram-container">
+            <svg width="700" height="400" viewBox="0 0 700 400">
+                <text x="350" y="30" text-anchor="middle" font-size="20" fill="#fbbf24">The Evolution of Prediction</text>
+                
+                <!-- Timeline -->
+                <line x1="50" y1="200" x2="650" y2="200" stroke="#666" stroke-width="2"/>
+                <text x="350" y="190" text-anchor="middle" fill="#999" font-size="12">Increasing sophistication →</text>
+                
+                <!-- FTS -->
+                <circle cx="100" cy="200" r="30" fill="#dc2626"/>
+                <text x="100" y="205" text-anchor="middle" fill="white" font-size="14">FTS</text>
+                <text x="100" y="250" text-anchor="middle" font-size="12" fill="white">Token</text>
+                <text x="100" y="270" text-anchor="middle" font-size="12" fill="white">Overlap</text>
+                <text x="100" y="150" text-anchor="middle" font-size="11" fill="#999">P(relevant|tokens)</text>
+                
+                <!-- Embeddings -->
+                <circle cx="250" cy="200" r="30" fill="#16a34a"/>
+                <text x="250" y="205" text-anchor="middle" fill="white" font-size="14">Embed</text>
+                <text x="250" y="250" text-anchor="middle" font-size="12" fill="white">Vector</text>
+                <text x="250" y="270" text-anchor="middle" font-size="12" fill="white">Distance</text>
+                <text x="250" y="150" text-anchor="middle" font-size="11" fill="#999">P(relevant|similarity)</text>
+                
+                <!-- Rules -->
+                <circle cx="400" cy="200" r="30" fill="#60a5fa"/>
+                <text x="400" y="205" text-anchor="middle" fill="white" font-size="14">Rules</text>
+                <text x="400" y="250" text-anchor="middle" font-size="12" fill="white">Feature</text>
+                <text x="400" y="270" text-anchor="middle" font-size="12" fill="white">Weights</text>
+                <text x="400" y="150" text-anchor="middle" font-size="11" fill="#999">P(relevant|features)</text>
+                
+                <!-- LLMs -->
+                <circle cx="550" cy="200" r="30" fill="#fbbf24"/>
+                <text x="550" y="205" text-anchor="middle" fill="black" font-size="14">LLMs</text>
+                <text x="550" y="250" text-anchor="middle" font-size="12" fill="white">Token</text>
+                <text x="550" y="270" text-anchor="middle" font-size="12" fill="white">Generation</text>
+                <text x="550" y="150" text-anchor="middle" font-size="11" fill="#999">P(evaluation|context)</text>
+                
+                <!-- Common thread -->
+                <text x="350" y="330" text-anchor="middle" font-size="16" fill="#60a5fa">All predicting: P(relevance | information)</text>
+                <text x="350" y="355" text-anchor="middle" font-size="14" fill="#999">The only difference is what information we use</text>
+            </svg>
+        </div>
+        
+        <h3>The Fundamental Constraints That Won't Change</h3>
+        
+        <div class="grid">
+            <div class="metric-card">
+                <h3>Information Theory</h3>
+                <p>Compression loses information</p>
+                <p>No free lunch theorem holds</p>
+                <p>Domain knowledge = moat</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Scale vs Precision</h3>
+                <p>Recall before precision</p>
+                <p>Speed at scale matters</p>
+                <p>Latency is physics</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Feedback Sparsity</h3>
+                <p>Most domains lack labels</p>
+                <p>Cold start is eternal</p>
+                <p>Transfer learning helps</p>
+            </div>
+        </div>
+        
+        <h3>What's Actually Changing?</h3>
+        
+        <div class="success-box">
+            <h3>The Tools Get Better, The Problems Remain</h3>
+            <ul>
+                <li><strong>Better Models:</strong> But still pattern matchers</li>
+                <li><strong>Faster Inference:</strong> But still too slow for billions</li>
+                <li><strong>Smarter Embeddings:</strong> But still lose context</li>
+                <li><strong>Cheaper Compute:</strong> But complexity grows faster</li>
+            </ul>
+        </div>
+        
+        <div class="joke-box">
+            "In 2030, we'll still be trying to find that one engineer who actually built distributed systems 
+            instead of just writing 'distributed systems' on their resume. But we'll do it with quantum embeddings!"
+        </div>
+        
+        <div class="warning-box">
+            <h3>The Timeless Truth</h3>
+            <p>The best search system isn't the one with the fanciest algorithm.</p>
+            <p>It's the one that deeply understands its domain and chooses the right tool for each constraint.</p>
+            <p><strong>Master the fundamentals. The rest is implementation details.</strong></p>
+        </div>
+    </div>
+    
+    <!-- Slide 15: Q&A -->
+    <div class="slide" id="slide15">
+        <h1>Questions? Let's Discuss!</h1>
+        
+        <div class="grid">
+            <div class="demo-box" style="background: #60a5fa10; border-color: #60a5fa;">
+                <h3>The 7 Questions Framework</h3>
+                <ol style="text-align: left;">
+                    <li>What's in your query?</li>
+                    <li>What's in your documents?</li>
+                    <li>What's your feedback density?</li>
+                    <li>What's your latency budget?</li>
+                    <li>What's your scale?</li>
+                    <li>How fresh is fresh?</li>
+                    <li>What does success mean?</li>
+                </ol>
+            </div>
+            
+            <div class="demo-box" style="background: #16a34a10; border-color: #16a34a;">
+                <h3>The Building Blocks</h3>
+                <ul style="text-align: left;">
+                    <li><strong>FTS:</strong> When structure matches</li>
+                    <li><strong>Vectors:</strong> Semantic promise & perils</li>
+                    <li><strong>Rules:</strong> Domain knowledge encoding</li>
+                    <li><strong>ML/LTR:</strong> When you have labels</li>
+                    <li><strong>LLMs:</strong> Expensive pattern matching</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h3>Common Questions We Get:</h3>
+        
+        <div class="grid" style="margin-top: 30px;">
+            <div class="metric-card">
+                <h3>"Why not fine-tune embeddings?"</h3>
+                <p style="color: #ccc;">Requires dense feedback + domain stability</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>"What about <br>GraphRAG/<br>ColBERT?"</h3>
+                <p style="color: #ccc;">Tools evolve, constraints remain</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>"Can LLMs do full ranking?"</h3>
+                <p style="color: #ccc;">Physics says no (latency × scale)</p>
+            </div>
+            
+            <div class="metric-card">
+                <h3>"How to handle prompt injection?"</h3>
+                <p style="color: #ccc;">Structured inputs + validation</p>
+            </div>
+        </div>
+        
+        <div class="joke-box" style="margin-top: 30px;">
+            "Remember: We're all just trying to predict the next best token... I mean candidate! 
+            And if your search system takes 47 years to run, at least it's job security!"
+        </div>
+        
+        <div class="success-box">
+            <h3>Key Takeaway</h3>
+            <p>Start with your constraints (7 Questions), not with the technology.</p>
+            <p>The best architecture emerges from understanding your specific problem.</p>
+        </div>
+        
+        <div class="grid" style="margin-top: 30px;">
+            <div class="demo-box">
+                <h3>Connect & Resources</h3>
+                <p>Slides: [URL]</p>
+                <p>Email: [your.email]</p>
+                <p>Twitter: [@handle]</p>
+            </div>
+            
+            <div class="demo-box">
+                <h3>Further Reading</h3>
+                <p>• Information Retrieval textbooks</p>
+                <p>• Papers on LTR algorithms</p>
+                <p>• No Free Lunch theorem</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Navigation -->
+    <div class="nav">
+        <button onclick="previousSlide()">← Previous</button>
+        <button onclick="nextSlide()">Next →</button>
+    </div>
+    
+    <script>
+        let currentSlide = 1;
+        const totalSlides = 15;
+        
+        function showSlide(n) {
+            const slides = document.getElementsByClassName('slide');
+            
+            if (n > totalSlides) currentSlide = 1;
+            if (n < 1) currentSlide = totalSlides;
+            
+            for (let i = 0; i < slides.length; i++) {
+                slides[i].classList.remove('active');
+            }
+            
+            slides[currentSlide - 1].classList.add('active');
+            document.getElementById('slideNumber').textContent = `${currentSlide} / ${totalSlides}`;
+        }
+        
+        function nextSlide() {
+            currentSlide++;
+            showSlide(currentSlide);
+        }
+        
+        function previousSlide() {
+            currentSlide--;
+            showSlide(currentSlide);
+        }
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') nextSlide();
+            if (e.key === 'ArrowLeft') previousSlide();
+        });
+        
+        // Initialize
+        showSlide(currentSlide);
+    </script>
+</body>
+</html>
